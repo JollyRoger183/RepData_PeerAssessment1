@@ -1,0 +1,144 @@
+Reproducible Research - Programming Assignment 1
+================================================
+
+## Loading and preprocessing the data
+```{r}
+setwd("C:\\02_LEARNING\\coursera\\Data Science\\06 - Reproducible Research\\Assignment1")
+
+xdata <- read.csv(file="activity.csv", header=TRUE)
+```
+
+
+## What is mean total number of steps taken per day?
+```{r}
+sum_steps_daily <- aggregate(x=xdata$steps, by=list(xdata$date), FUN=sum)
+```
+The mean total number of steps taken per day is: `r mean(sum_steps_daily$x, na.rm=T)`.
+With a median of `r median(sum_steps_daily$x, na.rm=T)` steps taken per day.
+
+The data can be summarized with the following histogram:
+```{r fig.width=7, fig.height=6}
+hist(sum_steps_daily$x, breaks=20, col="grey", ylim=c(0,11),
+     main="Histogram of steps per day", las=1, xlab="Steps per day")
+
+abline(abline(v=mean(sum_steps_daily$x, na.rm=T), col="red"))
+text(x=mean(sum_steps_daily$x, na.rm=T), y=11, labels="Mean")
+```
+
+## What is the average daily activity pattern?
+I used the aggregate() function to calculate the average number of steps for all 288 5-minute intervals across all 61 days. The average was calculated while ignoring missing data.
+
+```{r}
+mean_steps_per_interval <- aggregate(x=xdata$steps, by=list(xdata$interval), FUN=function(x) {mean(x, na.rm=T)})
+```
+
+```{r fig.width=7, fig.height=6}
+with(mean_steps_per_interval, {
+  plot(x=Group.1, y=x, type="l", las=1, xlab="24h clock time",
+       ylab="Average # of steps taken in 5-min interval",
+       main="Average daily activity pattern across 61 days")
+})
+
+```
+
+To find the interval that has on average the highest activity the which() function was used.
+It turned out that 8:35 am is the intervall with the highest average activity of 206.17 steps.
+```{r}
+with(mean_steps_per_interval, {
+  Group.1[which(x == max(x))]
+})
+
+max(mean_steps_per_interval$x)
+```
+
+## Imputing missing values
+
+# Number of missing values
+The number of missing values is `r sum(is.na(xdata))`
+
+Found with either:
+```{r} 
+sum(is.na(xdata))
+```
+or
+```{r} 
+nrow(xdata) - nrow(na.omit(xdata))
+```
+
+To impute missing data I used the average from the relavant 5-minute interval. First I found the rows_to_impute. Then I copied the steps and filled in the average steps_per_interval into the places where the original steps were NA.
+```{r}
+xdata_impute <- xdata
+xdata_impute$steps_Imp <- xdata_impute$steps
+
+# find NA_rows
+rows_to_impute <- is.na(xdata_impute$steps_Imp)
+
+# create vector that repeats the average interval steps for 61 days
+average_int_steps <- rep(mean_steps_per_interval$x, 61)
+
+# use that vector to fill in the average steps for those days with NA_rows only
+xdata_impute$steps_Imp[rows_to_impute] <- average_int_steps[rows_to_impute]
+```
+
+Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+
+```{r}
+sum_steps_daily_Imp <- aggregate(x=xdata_impute$steps_Imp, by=list(xdata_impute$date), FUN=sum)
+```
+
+The mean daily steps for the imputed data is `r mean(sum_steps_daily_Imp$x)`. The Median is also `r median(sum_steps_daily_Imp$x)` Therefore the mean and median did not change from the raw data to the imputed data. The reason is, that the missing values are imputed with averaged values and therefor sum up to the before average values again.
+
+```{r fig.width=7, fig.height=6}
+hist(sum_steps_daily_Imp$x, breaks=20, col="grey", ylim=c(0,20),
+     main="Histogram of steps per day (imputed data)", las=1, xlab="Steps per day")
+
+abline(abline(v=mean(sum_steps_daily_Imp$x, na.rm=T), col="red"))
+text(x=mean(sum_steps_daily_Imp$x, na.rm=T), y=20, labels="Mean (imputed data)")
+```
+
+By imputing missing values with average value the bin around the mean and median increased compared to the raw data.
+
+
+## Are there differences in activity patterns between weekdays and weekends?
+
+First I add a weekday column with the weekdays() function and the as.Date() transformation function. Then a column called $week_part is created where "Samstag" and "Sonntag" refer to "weekend" and the other days to "weekdays".
+
+```{r}
+xdata_impute$weekdays <- weekdays(as.Date(xdata_impute$date))
+
+xdata_impute$week_part <- NA
+xdata_impute$week_part[xdata_impute$weekdays %in% c("Samstag", "Sonntag")] <- "weekend"
+xdata_impute$week_part[!xdata_impute$weekdays %in% c("Samstag", "Sonntag")] <- "weekday"
+
+xdata_impute$week_part <- as.factor(xdata_impute$week_part)
+```
+
+I created two separate data frames to calculate the average number of steps for the two different week_part categories.
+```{r}
+library(lattice)
+
+weekday_df <- xdata_impute[xdata_impute$week_part == "weekday", ]
+weekend_df <- xdata_impute[xdata_impute$week_part == "weekend", ]
+
+MSpI_weekday <- aggregate(x=weekday_df$steps_Imp, by=list(weekday_df$interval), FUN=function(x) {mean(x, na.rm=T)})
+
+MSpI_weekend <- aggregate(x=weekend_df$steps_Imp, by=list(weekend_df$interval), FUN=function(x) {mean(x, na.rm=T)})
+```
+
+I plotted the data with the Lattice plotting system after rbind() combining the two data.frames.
+
+```{r}
+MSpI_weekday$weekpart <- rep("weekday", nrow(MSpI_weekday))
+MSpI_weekend$weekpart <- rep("weekend", nrow(MSpI_weekend))
+lat_data <- rbind(MSpI_weekday, MSpI_weekend)
+lat_data$weekpart <- as.factor(lat_data$weekpart)
+```
+
+```{r fig.width=7, fig.height=6}
+
+xyplot(data=lat_data, x ~ Group.1 | weekpart, 
+       layout=c(1,2), type="l", xlab="24h clock time",
+       ylab="Average steps per 5-minutes interval")
+```
+
+There seems to be a higher average activity on weekdays compared to the activity on weekends. Especially past 10 am in the morning. Untill then the activity seems rather similar.
